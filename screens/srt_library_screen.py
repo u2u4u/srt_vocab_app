@@ -1,5 +1,5 @@
 """
-SRT Library Screen - Complete with Delete Function
+SRT Library Screen - Complete with Delete and Export Functions
 View all SRT files and their associated words with RecycleView
 """
 
@@ -18,6 +18,7 @@ from kivy.lang import Builder
 from kivy.metrics import dp
 from kivy.clock import Clock
 from kivy.properties import StringProperty
+import os
 
 Builder.load_string('''
 <SRTFileItem>:
@@ -69,6 +70,15 @@ Builder.load_string('''
         Widget:
             size_hint_x: None
             width: dp(4)
+        
+        MDIconButton:
+            icon: "export"
+            theme_text_color: "Custom"
+            text_color: 0, 0.6, 0, 1
+            size_hint: None, None
+            size: dp(48), dp(48)
+            pos_hint: {'center_y': 0.5}
+            on_release: root.export_words()
         
         MDIconButton:
             icon: "delete"
@@ -132,6 +142,14 @@ class SRTFileItem(RecycleDataViewBehavior, MDBoxLayout):
         if hasattr(screen, 'show_words_for_srt'):
             screen.show_words_for_srt(self.srt_id, self.file_name)
     
+    def export_words(self):
+        """Export words to TXT file"""
+        from kivymd.app import MDApp
+        app = MDApp.get_running_app()
+        screen = app.root.current_screen
+        if hasattr(screen, 'export_srt_words'):
+            screen.export_srt_words(self.srt_id, self.file_name)
+    
     def delete_srt(self):
         """Delete this SRT file"""
         from kivymd.app import MDApp
@@ -185,6 +203,49 @@ class SRTLibraryScreen(MDScreen):
         viewer_screen = self.manager.get_screen('word_viewer')
         viewer_screen.set_words(srt_id, srt_name, words_data)
         self.manager.current = 'word_viewer'
+    
+    def export_srt_words(self, srt_id, srt_name):
+        """Export words for an SRT file to TXT format"""
+        from kivymd.app import MDApp
+        app = MDApp.get_running_app()
+        db = app.db_manager
+        
+        try:
+            # Get words from database
+            words_data = db.get_words_by_srt(srt_id)
+            
+            if not words_data:
+                self.show_dialog("No Words", f"No words found for {srt_name}")
+                return
+            
+            # Create filename (remove .srt extension and add _words.txt)
+            base_name = srt_name.replace('.srt', '')
+            export_filename = f"{base_name}_words.txt"
+            
+            # Get export path (same directory as the app)
+            export_path = os.path.join(os.path.dirname(__file__), '..', export_filename)
+            export_path = os.path.abspath(export_path)
+            
+            # Write to file
+            with open(export_path, 'w', encoding='utf-8') as f:
+                for word_dict in words_data:
+                    word = word_dict['word']
+                    meaning = word_dict['meaning']
+                    
+                    # Write: word TAB meaning
+                    f.write(f"{word}\t{meaning}\n")
+            
+            # Show success message with file location
+            self.show_dialog(
+                "Export Successful",
+                f"Words exported to:\n{export_filename}\n\nLocation: {os.path.dirname(export_path)}\n\nTotal words: {len(words_data)}"
+            )
+            
+        except Exception as e:
+            print(f"Error exporting words: {e}")
+            import traceback
+            traceback.print_exc()
+            self.show_dialog("Export Error", f"Failed to export words:\n{str(e)}")
     
     def confirm_delete_srt(self, srt_id, srt_name):
         """Show confirmation dialog before deleting SRT"""

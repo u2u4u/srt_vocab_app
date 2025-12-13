@@ -54,14 +54,22 @@ class GeminiService:
         Get meanings and examples for a list of words
         Returns dict: {word: {'meaning': 'Persian meaning', 'examples': 'example sentences'}}
         """
+        # preprompt = (
+        #     "Each line in the following input contains one English word. "
+        #     "For each word, return its Persian meaning and one or more example sentences "
+        #     "demonstrating its usage in English. Separate the word, its Persian meaning, "
+        #     "and the examples with commas. Separate multiple example sentences with a hyphen (-). "
+        #     "Do not add any extra explanation. Words:\n\n"
+        # )
         preprompt = (
             "Each line in the following input contains one English word. "
-            "For each word, return its Persian meaning and one or more example sentences "
-            "demonstrating its usage in English. Separate the word, its Persian meaning, "
-            "and the examples with commas. Separate multiple example sentences with a hyphen (-). "
+            "For each word, return its Persian meaning(s) and one or more example sentences "
+            "demonstrating its usage in English. If the word has multiple meanings, list all "
+            "common meanings clearly. Separate the word, its Persian meaning(s), "
+            "and the examples with commas. Separate different meanings with a semicolon (;). "
+            "Separate multiple example sentences with a hyphen (-). "
             "Do not add any extra explanation. Words:\n\n"
         )
-        
         words_text = '\n'.join(words)
         prompt = f"{preprompt}{words_text}"
         
