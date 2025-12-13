@@ -1,0 +1,11 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+./vocab.db
+settings.json
+vocab.db
+test_persian.py
+test_setup.py
