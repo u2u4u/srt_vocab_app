@@ -10,3 +10,6 @@ settings.json
 vocab.db
 test_persian.py
 test_setup.py
+dist
+./dist/*
+build/vocab_app/base_library.zip

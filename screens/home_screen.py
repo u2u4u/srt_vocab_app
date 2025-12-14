@@ -180,6 +180,10 @@ class HomeScreen(MDScreen):
         """Process SRT file and extract words"""
         try:
             from kivymd.app import MDApp
+            from utils.settings_manager import get_settings_manager
+            # settings = get_settings_manager()
+            # srt_lang = settings.get_srt_language()
+            # translate_lang = settings.get_translate_language()
             app = MDApp.get_running_app()
             db = app.db_manager
             

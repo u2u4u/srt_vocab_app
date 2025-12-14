@@ -129,6 +129,51 @@ Builder.load_string('''
                             orientation: 'vertical'
                             spacing: dp(8)
                 
+                # Language Settings Card
+                MDCard:
+                    orientation: 'vertical'
+                    padding: dp(20)
+                    spacing: dp(15)
+                    size_hint_y: None
+                    height: dp(265)
+                    elevation: 3
+                    
+                    MDLabel:
+                        text: "Language Settings"
+                        font_style: "H6"
+                        size_hint_y: None
+                        height: self.texture_size[1]
+                    
+                    MDSeparator:
+                        height: dp(1)
+                    
+                    MDTextField:
+                        id: srt_language_field
+                        hint_text: "SRT Language"
+                        text: root.srt_language
+                        helper_text: "Source language of subtitle files"
+                        helper_text_mode: "on_focus"
+                        size_hint_y: None
+                        height: dp(63)
+                        on_text_validate: root.update_srt_language(self.text)
+                    
+                    MDTextField:
+                        id: translate_language_field
+                        hint_text: "Translation Language"
+                        text: root.translate_language
+                        helper_text: "Target language for word meanings"
+                        helper_text_mode: "on_focus"
+                        size_hint_y: None
+                        height: dp(63)
+                        on_text_validate: root.update_translate_language(self.text)
+                    
+                    MDLabel:
+                        text: "Press Enter to save changes"
+                        font_style: "Caption"
+                        theme_text_color: "Secondary"
+                        size_hint_y: None
+                        height: dp(20)
+                
                 # Info Card
                 MDCard:
                     orientation: 'vertical'
@@ -213,9 +258,22 @@ class SettingsScreen(MDScreen):
         else:
             return f"{count} API keys configured (will be used in rotation)"
     
+    @property
+    def srt_language(self):
+        return self.settings_manager.get_srt_language()
+
+    @property
+    def translate_language(self):
+        return self.settings_manager.get_translate_language()
+    
     def on_enter(self):
         """Called when screen is displayed"""
         self.load_api_keys()
+        # Update language fields
+        if hasattr(self.ids, 'srt_language_field'):
+            self.ids.srt_language_field.text = self.srt_language
+        if hasattr(self.ids, 'translate_language_field'):
+            self.ids.translate_language_field.text = self.translate_language
     
     def load_api_keys(self):
         """Load API keys from settings"""
@@ -227,6 +285,22 @@ class SettingsScreen(MDScreen):
         self.ids.keys_recycler.data = [
             {'key': key} for key in keys
         ]
+    
+    def update_srt_language(self, language):
+        """Update SRT language setting"""
+        if language and language.strip():
+            if self.settings_manager.set_srt_language(language.strip()):
+                self.show_toast(f"SRT language set to: {language}")
+            else:
+                self.show_toast("Failed to update SRT language")
+
+    def update_translate_language(self, language):
+        """Update translation language setting"""
+        if language and language.strip():
+            if self.settings_manager.set_translate_language(language.strip()):
+                self.show_toast(f"Translation language set to: {language}")
+            else:
+                self.show_toast("Failed to update translation language")
     
     def show_add_key_dialog(self):
         """Show dialog to add new API key"""

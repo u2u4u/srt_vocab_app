@@ -137,6 +137,40 @@ class SettingsManager:
         """Set language"""
         self.settings["language"] = language
         return self.save_settings()
+    
+    def _default_settings(self) -> dict:
+        """Return default settings structure"""
+        return {
+            "api_keys": [],
+            "theme": "Light",
+            "language": "en",
+            "srt_language": "English",  # NEW: Source language of SRT files
+            "translate_language": "Persian"  # NEW: Target language for translations
+        }
+
+    # Add these new methods after the language management section:
+
+    # SRT Language Management
+
+    def get_srt_language(self) -> str:
+        """Get SRT source language"""
+        return self.settings.get("srt_language", "english")
+
+    def set_srt_language(self, language: str) -> bool:
+        """Set SRT source language"""
+        self.settings["srt_language"] = language
+        return self.save_settings()
+
+    # Translation Language Management
+
+    def get_translate_language(self) -> str:
+        """Get translation target language"""
+        return self.settings.get("translate_language", "farsi")
+
+    def set_translate_language(self, language: str) -> bool:
+        """Set translation target language"""
+        self.settings["translate_language"] = language
+        return self.save_settings()
 
 
 # Singleton instance

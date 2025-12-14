@@ -127,15 +127,26 @@ class DatabaseManager:
         conn.commit()
     
     def get_words_by_srt(self, srtfile_id: int) -> List[dict]:
-        """Get all words for a specific SRT file"""
+        """Get all unknown words for a specific SRT file"""
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute(
-            'SELECT id, word, meaning, srtfile FROM words WHERE srtfile = ? ORDER BY word',
+            """
+            SELECT w.id, w.word, w.meaning, w.srtfile
+            FROM words w
+            WHERE w.srtfile = ?
+            AND NOT EXISTS (
+                SELECT 1
+                FROM known_words kw
+                WHERE kw.word = w.word
+            )
+            ORDER BY w.word
+            """,
             (srtfile_id,)
         )
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
+
     
     def get_all_words(self) -> List[dict]:
         """Get all words"""

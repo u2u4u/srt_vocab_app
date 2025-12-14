@@ -1,5 +1,5 @@
 """
-SRT Library Screen - Complete with Delete and Export Functions
+SRT Library Screen - Complete with Delete and Recheck Functions
 View all SRT files and their associated words with RecycleView
 """
 
@@ -18,7 +18,9 @@ from kivy.lang import Builder
 from kivy.metrics import dp
 from kivy.clock import Clock
 from kivy.properties import StringProperty
-import os
+from services.gemini_service import GeminiService
+from utils.settings_manager import get_settings_manager
+import threading
 
 Builder.load_string('''
 <SRTFileItem>:
@@ -74,11 +76,20 @@ Builder.load_string('''
         MDIconButton:
             icon: "export"
             theme_text_color: "Custom"
-            text_color: 0, 0.6, 0, 1
+            text_color: 0, 0.7, 0, 1
             size_hint: None, None
             size: dp(48), dp(48)
             pos_hint: {'center_y': 0.5}
             on_release: root.export_words()
+        
+        MDIconButton:
+            icon: "refresh"
+            theme_text_color: "Custom"
+            text_color: app.theme_cls.primary_color
+            size_hint: None, None
+            size: dp(48), dp(48)
+            pos_hint: {'center_y': 0.5}
+            on_release: root.recheck_meanings()
         
         MDIconButton:
             icon: "delete"
@@ -142,14 +153,6 @@ class SRTFileItem(RecycleDataViewBehavior, MDBoxLayout):
         if hasattr(screen, 'show_words_for_srt'):
             screen.show_words_for_srt(self.srt_id, self.file_name)
     
-    def export_words(self):
-        """Export words to TXT file"""
-        from kivymd.app import MDApp
-        app = MDApp.get_running_app()
-        screen = app.root.current_screen
-        if hasattr(screen, 'export_srt_words'):
-            screen.export_srt_words(self.srt_id, self.file_name)
-    
     def delete_srt(self):
         """Delete this SRT file"""
         from kivymd.app import MDApp
@@ -157,11 +160,28 @@ class SRTFileItem(RecycleDataViewBehavior, MDBoxLayout):
         screen = app.root.current_screen
         if hasattr(screen, 'confirm_delete_srt'):
             screen.confirm_delete_srt(self.srt_id, self.file_name)
+    
+    def recheck_meanings(self):
+        """Recheck meanings for words in this SRT"""
+        from kivymd.app import MDApp
+        app = MDApp.get_running_app()
+        screen = app.root.current_screen
+        if hasattr(screen, 'recheck_srt_meanings'):
+            screen.recheck_srt_meanings(self.srt_id, self.file_name)
+    
+    def export_words(self):
+        """Export words to file"""
+        from kivymd.app import MDApp
+        app = MDApp.get_running_app()
+        screen = app.root.current_screen
+        if hasattr(screen, 'export_srt_words'):
+            screen.export_srt_words(self.srt_id, self.file_name)
 
 class SRTLibraryScreen(MDScreen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.current_dialog = None
+        self.progress_dialog = None
     
     def on_enter(self):
         """Called when screen is displayed"""
@@ -203,49 +223,6 @@ class SRTLibraryScreen(MDScreen):
         viewer_screen = self.manager.get_screen('word_viewer')
         viewer_screen.set_words(srt_id, srt_name, words_data)
         self.manager.current = 'word_viewer'
-    
-    def export_srt_words(self, srt_id, srt_name):
-        """Export words for an SRT file to TXT format"""
-        from kivymd.app import MDApp
-        app = MDApp.get_running_app()
-        db = app.db_manager
-        
-        try:
-            # Get words from database
-            words_data = db.get_words_by_srt(srt_id)
-            
-            if not words_data:
-                self.show_dialog("No Words", f"No words found for {srt_name}")
-                return
-            
-            # Create filename (remove .srt extension and add _words.txt)
-            base_name = srt_name.replace('.srt', '')
-            export_filename = f"{base_name}_words.txt"
-            
-            # Get export path (same directory as the app)
-            export_path = os.path.join(os.path.dirname(__file__), '..', export_filename)
-            export_path = os.path.abspath(export_path)
-            
-            # Write to file
-            with open(export_path, 'w', encoding='utf-8') as f:
-                for word_dict in words_data:
-                    word = word_dict['word']
-                    meaning = word_dict['meaning']
-                    
-                    # Write: word TAB meaning
-                    f.write(f"{word}\t{meaning}\n")
-            
-            # Show success message with file location
-            self.show_dialog(
-                "Export Successful",
-                f"Words exported to:\n{export_filename}\n\nLocation: {os.path.dirname(export_path)}\n\nTotal words: {len(words_data)}"
-            )
-            
-        except Exception as e:
-            print(f"Error exporting words: {e}")
-            import traceback
-            traceback.print_exc()
-            self.show_dialog("Export Error", f"Failed to export words:\n{str(e)}")
     
     def confirm_delete_srt(self, srt_id, srt_name):
         """Show confirmation dialog before deleting SRT"""
@@ -296,6 +273,199 @@ class SRTLibraryScreen(MDScreen):
         except Exception as e:
             print(f"Error deleting SRT: {e}")
             self.show_toast("Error deleting file")
+    
+    def recheck_srt_meanings(self, srt_id, srt_name):
+        """Recheck and update meanings for words without meanings"""
+        from kivymd.app import MDApp
+        app = MDApp.get_running_app()
+        db = app.db_manager
+        
+        # Get all words for this SRT
+        words_data = db.get_words_by_srt(srt_id)
+        
+        if not words_data:
+            self.show_toast("No words found in this SRT")
+            return
+        
+        # Find words without meanings or with "Meaning not found"
+        words_to_update = []
+        for word_data in words_data:
+            meaning = word_data['meaning']
+            if not meaning or meaning.strip() == "" or meaning.strip().lower() == "meaning not found":
+                words_to_update.append(word_data['word'])
+        
+        if not words_to_update:
+            self.show_dialog(
+                "All Set!",
+                f"All words in '{srt_name}' already have meanings."
+            )
+            return
+        
+        # Show confirmation dialog
+        dialog = MDDialog(
+            title="Recheck Meanings",
+            text=f"Found {len(words_to_update)} word(s) without meanings in '{srt_name}'.\n\nFetch meanings now?",
+            buttons=[
+                MDFlatButton(
+                    text="CANCEL",
+                    on_release=lambda x: dialog.dismiss()
+                ),
+                MDRaisedButton(
+                    text="FETCH",
+                    on_release=lambda x: self.start_recheck_process(srt_id, words_to_update, dialog)
+                ),
+            ],
+        )
+        dialog.open()
+    
+    def start_recheck_process(self, srt_id, words_to_update, confirm_dialog):
+        """Start the recheck process in background"""
+        confirm_dialog.dismiss()
+        
+        self.show_progress_dialog(f"Fetching meanings for {len(words_to_update)} words...")
+        
+        # Process in background thread
+        threading.Thread(
+            target=self.process_recheck_meanings,
+            args=(srt_id, words_to_update),
+            daemon=True
+        ).start()
+    
+    def process_recheck_meanings(self, srt_id, words_to_update):
+        """Process and update word meanings in background"""
+        try:
+            from kivymd.app import MDApp
+            app = MDApp.get_running_app()
+            db = app.db_manager
+            
+            # Get settings for API key and translation language
+            settings = get_settings_manager()
+            api_key = settings.get_next_api_key()
+            
+            if not api_key:
+                Clock.schedule_once(
+                    lambda dt: self.show_error_dialog("No API key configured"),
+                    0
+                )
+                Clock.schedule_once(lambda dt: self.close_progress_dialog(), 0)
+                return
+            
+            translate_lang = settings.get_translate_language()
+            
+            # Get meanings from Gemini
+            gemini = GeminiService(api_key)
+            meanings_dict = gemini.get_word_meanings_batch(words_to_update)
+            
+            # Update database
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            
+            updated_count = 0
+            for word in words_to_update:
+                if word in meanings_dict:
+                    meaning_text = meanings_dict[word]['meaning']
+                    examples_text = meanings_dict[word]['examples']
+                    full_meaning = f"{meaning_text} | Examples: {examples_text}"
+                    
+                    # Update the word meaning
+                    cursor.execute(
+                        'UPDATE words SET meaning = ? WHERE word = ? AND srtfile = ?',
+                        (full_meaning, word, srt_id)
+                    )
+                    updated_count += 1
+            
+            conn.commit()
+            
+            # Show success message
+            Clock.schedule_once(
+                lambda dt: self.finish_recheck_process(updated_count),
+                0
+            )
+            
+        except Exception as e:
+            print(f"Error rechecking meanings: {e}")
+            import traceback
+            traceback.print_exc()
+            Clock.schedule_once(
+                lambda dt: self.show_error_dialog(f"Error: {str(e)}"),
+                0
+            )
+            Clock.schedule_once(lambda dt: self.close_progress_dialog(), 0)
+    
+    def finish_recheck_process(self, updated_count):
+        """Finish recheck process and show result"""
+        self.close_progress_dialog()
+        self.show_dialog(
+            "Success",
+            f"Updated meanings for {updated_count} word(s)!"
+        )
+    
+    def export_srt_words(self, srt_id, srt_name):
+        """Export words to text file in tab-separated format"""
+        from kivymd.app import MDApp
+        import os
+        
+        app = MDApp.get_running_app()
+        db = app.db_manager
+        
+        # Get all words for this SRT
+        words_data = db.get_words_by_srt(srt_id)
+        
+        if not words_data:
+            self.show_toast("No words to export")
+            return
+        
+        try:
+            # Create export filename
+            safe_name = srt_name.replace('.srt', '').replace(' ', '_')
+            export_filename = f"{safe_name}_words.txt"
+            export_path = os.path.join(os.path.dirname(__file__), '..', export_filename)
+            
+            # Write to file in tab-separated format
+            with open(export_path, 'w', encoding='utf-8') as f:
+                for word_data in words_data:
+                    word = word_data['word']
+                    meaning = word_data['meaning']
+                    
+                    # Write word and meaning separated by tab
+                    f.write(f"{word}\t{meaning}\n")
+            
+            self.show_dialog(
+                "Export Successful",
+                f"Exported {len(words_data)} words to:\n{export_filename}"
+            )
+            
+        except Exception as e:
+            print(f"Error exporting words: {e}")
+            self.show_error_dialog(f"Export failed: {str(e)}")
+    
+    def show_progress_dialog(self, text):
+        """Show loading dialog"""
+        self.progress_dialog = MDDialog(
+            text=text,
+            auto_dismiss=False
+        )
+        self.progress_dialog.open()
+    
+    def close_progress_dialog(self):
+        """Close loading dialog"""
+        if self.progress_dialog:
+            self.progress_dialog.dismiss()
+            self.progress_dialog = None
+    
+    def show_error_dialog(self, message):
+        """Show error dialog"""
+        dialog = MDDialog(
+            title="Error",
+            text=message,
+            buttons=[
+                MDRaisedButton(
+                    text="OK",
+                    on_release=lambda x: dialog.dismiss()
+                )
+            ]
+        )
+        dialog.open()
     
     def show_toast(self, message):
         """Show a quick toast message"""

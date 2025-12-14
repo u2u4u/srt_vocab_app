@@ -6,11 +6,15 @@ Handles communication with Google Gemini API
 from google import genai
 from typing import List, Dict
 import re
+from utils.settings_manager import get_settings_manager
 
 class GeminiService:
     def __init__(self, api_key: str):
         self.api_key = api_key
         self.client = genai.Client(api_key=api_key)
+        self.settings = get_settings_manager()
+        self.srt_lang = self.settings.get_srt_language()  # Returns: "english"
+        self.translate_lang = self.settings.get_translate_language()  # Returns: "farsi"
     
     def extract_important_words(self, text: str) -> List[str]:
         """
@@ -18,9 +22,9 @@ class GeminiService:
         Returns list of words
         """
         preprompt = (
-            "Identify words in the following text that are likely useful or important "
-            "for an intermediate language learner. List the words separated by commas. "
-            "Do not include any explanations—only the words. Text:\n\n"
+            f"Identify words in the following text that are likely useful or important "
+            f"for an intermediate language learner. List the words separated by commas. "
+            f"Do not include any explanations—only the words. Text:\n\n"
         )
         
         prompt = f"{preprompt}{text}"
@@ -61,15 +65,17 @@ class GeminiService:
         #     "and the examples with commas. Separate multiple example sentences with a hyphen (-). "
         #     "Do not add any extra explanation. Words:\n\n"
         # )
+        
         preprompt = (
-            "Each line in the following input contains one English word. "
-            "For each word, return its Persian meaning(s) and one or more example sentences "
-            "demonstrating its usage in English. If the word has multiple meanings, list all "
-            "common meanings clearly. Separate the word, its Persian meaning(s), "
-            "and the examples with commas. Separate different meanings with a semicolon (;). "
-            "Separate multiple example sentences with a hyphen (-). "
-            "Do not add any extra explanation. Words:\n\n"
+            f"Each line in the following input contains one {self.srt_lang} word. "
+            f"For each word, return its {self.translate_lang} meaning(s) and one or more example sentences "
+            f"demonstrating its usage in {self.srt_lang}. If the word has multiple meanings, list all "
+            f"common meanings clearly. Separate the word, its {self.translate_lang} meaning(s), "
+            f"and the examples with commas. Separate different meanings with a semicolon (;). "
+            f"Separate multiple example sentences with a hyphen (-). "
+            f"Do not add any extra explanation. Words:\n\n"
         )
+        print("preprompt:", preprompt)
         words_text = '\n'.join(words)
         prompt = f"{preprompt}{words_text}"
         
